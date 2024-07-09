@@ -20,6 +20,8 @@ type ServerRequest struct {
 	Method  string
 	Uri     string
 	Version string
+	Body    string
+	Headers map[string]string
 }
 
 type ServerResponse struct {
@@ -53,7 +55,30 @@ func (sr *ServerResponse) ToString() string {
 	return response
 }
 
-func handleRequest(conn net.Conn) {
+func mountRequest(data []byte) *ServerRequest {
+	fullRequestString := string(data)
+
+	sections := strings.Split(fullRequestString, "\r\n")
+	requestLineParts := strings.Split(sections[0], " ")
+
+	headers := make(map[string]string)
+
+	for _, header := range sections[1 : len(sections)-2] {
+		headerParts := strings.Split(header, ": ")
+
+		headers[headerParts[0]] = headerParts[1]
+	}
+
+	return &ServerRequest{
+		Method:  requestLineParts[0],
+		Uri:     requestLineParts[1],
+		Version: requestLineParts[2],
+		Headers: headers,
+		Body:    sections[len(sections)-1],
+	}
+}
+
+func handleConnection(conn net.Conn) {
 	data := make([]byte, 1024)
 	_, err := conn.Read(data)
 
@@ -61,15 +86,9 @@ func handleRequest(conn net.Conn) {
 		log.Fatalln("Error reading from connection", err)
 	}
 
-	parts := strings.Split(string(data), " ")
-	request := ServerRequest{
-		Method:  parts[0],
-		Uri:     parts[1],
-		Version: parts[2],
-	}
-
-	response := handlePath(request.Uri)
-	fmt.Println("DEBUG: ", response.ToString())
+	request := mountRequest(data)
+	response := handleRequest(request)
+	fmt.Println("DEBUG ", response.ToString())
 
 	_, err = conn.Write([]byte(response.ToString()))
 	if err != nil {
@@ -77,12 +96,20 @@ func handleRequest(conn net.Conn) {
 	}
 }
 
-func handlePath(path string) ServerResponse {
-	response := ServerResponse{headers: make(map[string]string)}
-	pathParts := strings.Split(path, "/")
+func handleRequest(request *ServerRequest) *ServerResponse {
+	response := &ServerResponse{headers: make(map[string]string)}
+	pathParts := strings.Split(request.Uri, "/")
 
-	if path == "/" {
+	fmt.Println("DEBUG: ", request.Uri)
+	if request.Uri == "/" {
 		response.SetStatus(OK)
+	} else if request.Uri == "/user-agent" {
+		userAgent := request.Headers["User-Agent"]
+		response.
+			SetHeader("Content-Type", "text/plain").
+			SetHeader("Content-Length", strconv.Itoa(len(userAgent))).
+			SetStatus(OK).
+			SetBody(userAgent)
 	} else if pathParts[1] == "echo" {
 		response.
 			SetHeader("Content-Type", "text/plain").
@@ -92,12 +119,7 @@ func handlePath(path string) ServerResponse {
 	} else {
 		response.SetStatus(NOT_FOUND)
 	}
-
 	return response
-}
-
-func writeResponse(conn net.Conn, status ResponseStatus) (int, error) {
-	return conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %s\r\n\r\n", status)))
 }
 
 func main() {
@@ -116,5 +138,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	handleRequest(connection)
+	handleConnection(connection)
 }
