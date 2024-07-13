@@ -23,6 +23,8 @@ const (
 	CREATED   ResponseStatus = "201 Created"
 )
 
+var supportedEncodings = []string{"gzip", "deflate"}
+
 var filesPath = ""
 
 type ServerRequest struct {
@@ -74,7 +76,6 @@ func mountRequest(data []byte) *ServerRequest {
 
 	for _, header := range sections[1 : len(sections)-2] {
 		headerParts := strings.Split(header, ": ")
-
 		headers[headerParts[0]] = headerParts[1]
 	}
 
@@ -115,6 +116,8 @@ func handleConnection(conn net.Conn) {
 		log.Println("[ERROR] Failed while handling the request:", err)
 		return
 	}
+
+	conn.Close()
 }
 
 func handleRequest(request *ServerRequest) *ServerResponse {
@@ -164,6 +167,30 @@ func handleRequest(request *ServerRequest) *ServerResponse {
 		response.SetStatus(CREATED)
 	} else {
 		response.SetStatus(NOT_FOUND)
+	}
+
+	return tryEncoding(request, response)
+}
+
+func tryEncoding(request *ServerRequest, response *ServerResponse) *ServerResponse {
+	value, exists := request.Headers["Accept-Encoding"]
+
+	if exists {
+		possibleEncodings := strings.Split(value, ",")
+		isValid := false
+
+		for _, supportedEncoding := range supportedEncodings {
+			if supportedEncoding == possibleEncodings[0] {
+				fmt.Println("[INFO] Possible encoding exists", supportedEncoding)
+				isValid = true
+			}
+		}
+
+		if !isValid {
+			return response
+		}
+
+		response.SetHeader("Content-Encoding", possibleEncodings[0])
 	}
 
 	return response
