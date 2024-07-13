@@ -16,6 +16,8 @@ const (
 	NOT_FOUND ResponseStatus = "404 Not Found"
 )
 
+var filesPath = ""
+
 type ServerRequest struct {
 	Method  string
 	Uri     string
@@ -79,6 +81,7 @@ func mountRequest(data []byte) *ServerRequest {
 }
 
 func handleConnection(conn net.Conn) {
+	fmt.Println("[INFO] Handling the connection on thread ", os.Getpid())
 	data := make([]byte, 1024)
 	_, err := conn.Read(data)
 
@@ -89,7 +92,7 @@ func handleConnection(conn net.Conn) {
 
 	request := mountRequest(data)
 	response := handleRequest(request)
-	fmt.Println("[DEBUG] ", response.ToString())
+	fmt.Println("[INFO] Sending back response\n", response.ToString())
 
 	_, err = conn.Write([]byte(response.ToString()))
 	if err != nil {
@@ -102,7 +105,8 @@ func handleRequest(request *ServerRequest) *ServerResponse {
 	response := &ServerResponse{headers: make(map[string]string)}
 	pathParts := strings.Split(request.Uri, "/")
 
-	fmt.Println("DEBUG: ", request.Uri)
+	fmt.Println("[DEBUG] Handling URI", request.Uri)
+	fmt.Println("[DEBUG] Path Parts", pathParts)
 	if request.Uri == "/" {
 		response.SetStatus(OK)
 	} else if request.Uri == "/user-agent" {
@@ -118,15 +122,38 @@ func handleRequest(request *ServerRequest) *ServerResponse {
 			SetHeader("Content-Length", strconv.Itoa(len(pathParts[2]))).
 			SetStatus(OK).
 			SetBody(pathParts[2])
+	} else if pathParts[1] == "files" {
+		fileName := filesPath + pathParts[2]
+		fmt.Println("[INFO] Handling file", fileName)
+		dat, err := os.ReadFile(fileName)
+
+		if err != nil {
+			response.SetStatus(NOT_FOUND)
+		} else {
+			strData := string(dat)
+
+			response.
+				SetStatus(OK).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Length", strconv.Itoa(len(strData))).
+				SetBody(strData)
+		}
 	} else {
 		response.SetStatus(NOT_FOUND)
 	}
+
 	return response
 }
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
+	fmt.Println("[DEBUG] Program params", os.Args[1:])
+
+	if len(os.Args) > 2 && os.Args[1] == "--directory" && os.Args[2] != "" {
+		fmt.Println("[INFO] Setting files directory to ", os.Args[2])
+		filesPath = os.Args[2]
+	}
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
