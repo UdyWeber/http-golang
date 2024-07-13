@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"log"
 	"net"
@@ -187,7 +189,17 @@ func tryEncoding(request *ServerRequest, response *ServerResponse) *ServerRespon
 	}
 
 	fmt.Println("[INFO] Inserting encoding header", validEncoders[0])
-	return response.SetHeader("Content-Encoding", validEncoders[0])
+	buffer := &bytes.Buffer{}
+	writter := gzip.NewWriter(buffer)
+	writter.Write([]byte(response.body))
+	writter.Close()
+
+	fmt.Println("[INFO] Writing response body", buffer.String())
+
+	return response.
+		SetHeader("Content-Length", strconv.Itoa(len(buffer.String()))).
+		SetHeader("Content-Encoding", validEncoders[0]).
+		SetBody(buffer.String())
 }
 
 func getValidEncoders(value string) []string {
