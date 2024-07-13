@@ -173,27 +173,38 @@ func handleRequest(request *ServerRequest) *ServerResponse {
 }
 
 func tryEncoding(request *ServerRequest, response *ServerResponse) *ServerResponse {
-	value, exists := request.Headers["Accept-Encoding"]
+	requestEncoders, exists := request.Headers["Accept-Encoding"]
 
-	if exists {
-		possibleEncodings := strings.Split(value, ",")
-		isValid := false
-
-		for _, supportedEncoding := range supportedEncodings {
-			if supportedEncoding == possibleEncodings[0] {
-				fmt.Println("[INFO] Possible encoding exists", supportedEncoding)
-				isValid = true
-			}
-		}
-
-		if !isValid {
-			return response
-		}
-
-		response.SetHeader("Content-Encoding", possibleEncodings[0])
+	if !exists {
+		return response
 	}
 
-	return response
+	validEncoders := getValidEncoders(requestEncoders)
+
+	if len(validEncoders) == 0 {
+		fmt.Println("[INFO] Possible encoding does not exist")
+		return response
+	}
+
+	fmt.Println("[INFO] Inserting encoding header", validEncoders[0])
+	return response.SetHeader("Content-Encoding", validEncoders[0])
+}
+
+func getValidEncoders(value string) []string {
+	var validEncoders []string
+	possibleEncodings := strings.Split(value, ",")
+	fmt.Println("[INFO] Handling Accept-Encoding ", possibleEncodings)
+
+	for _, supportedEncoding := range supportedEncodings {
+		for _, possibleEncoding := range possibleEncodings {
+			fmt.Println("[INFO] Comparing", possibleEncoding, " with", supportedEncoding)
+			if strings.Compare(strings.TrimSpace(possibleEncoding), supportedEncoding) == 0 {
+				fmt.Println("[INFO] Possible encoding exists", supportedEncoding)
+				validEncoders = append(validEncoders, supportedEncoding)
+			}
+		}
+	}
+	return validEncoders
 }
 
 func main() {
