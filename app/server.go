@@ -10,16 +10,23 @@ import (
 )
 
 type ResponseStatus string
+type HttpMethod string
+
+const (
+	GET  HttpMethod = "GET"
+	POST HttpMethod = "POST"
+)
 
 const (
 	OK        ResponseStatus = "200 OK"
 	NOT_FOUND ResponseStatus = "404 Not Found"
+	CREATED   ResponseStatus = "201 Created"
 )
 
 var filesPath = ""
 
 type ServerRequest struct {
-	Method  string
+	Method  HttpMethod
 	Uri     string
 	Version string
 	Body    string
@@ -71,12 +78,21 @@ func mountRequest(data []byte) *ServerRequest {
 		headers[headerParts[0]] = headerParts[1]
 	}
 
+	body := sections[len(sections)-1]
+	fmt.Println("[INFO] Request body:", body)
+	value, exists := headers["Content-Length"]
+	if exists {
+		fmt.Println("[INFO] Reduced request body:", body, "with length:", value)
+		length, _ := strconv.Atoi(value)
+		body = body[:length]
+	}
+
 	return &ServerRequest{
-		Method:  requestLineParts[0],
+		Method:  HttpMethod(requestLineParts[0]),
 		Uri:     requestLineParts[1],
 		Version: requestLineParts[2],
 		Headers: headers,
-		Body:    sections[len(sections)-1],
+		Body:    body,
 	}
 }
 
@@ -122,22 +138,30 @@ func handleRequest(request *ServerRequest) *ServerResponse {
 			SetHeader("Content-Length", strconv.Itoa(len(pathParts[2]))).
 			SetStatus(OK).
 			SetBody(pathParts[2])
-	} else if pathParts[1] == "files" {
+	} else if pathParts[1] == "files" && request.Method == GET {
 		fileName := filesPath + pathParts[2]
 		fmt.Println("[INFO] Handling file", fileName)
 		dat, err := os.ReadFile(fileName)
 
 		if err != nil {
-			response.SetStatus(NOT_FOUND)
-		} else {
-			strData := string(dat)
-
-			response.
-				SetStatus(OK).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetHeader("Content-Length", strconv.Itoa(len(strData))).
-				SetBody(strData)
+			return response.SetStatus(NOT_FOUND)
 		}
+
+		strData := string(dat)
+
+		response.
+			SetStatus(OK).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Content-Length", strconv.Itoa(len(strData))).
+			SetBody(strData)
+	} else if pathParts[1] == "files" && request.Method == POST {
+		fileName := filesPath + pathParts[2]
+		fmt.Println("[INFO] Creating file", fileName, "with content:", request.Body)
+		err := os.WriteFile(fileName, []byte(request.Body), 0755)
+		if err != nil {
+			fmt.Println("[ERROR] Failed creating file", err)
+		}
+		response.SetStatus(CREATED)
 	} else {
 		response.SetStatus(NOT_FOUND)
 	}
