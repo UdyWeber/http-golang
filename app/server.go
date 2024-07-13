@@ -83,16 +83,18 @@ func handleConnection(conn net.Conn) {
 	_, err := conn.Read(data)
 
 	if err != nil {
-		log.Fatalln("Error reading from connection", err)
+		log.Println("[ERROR] Failed reading from connection", err)
+		return
 	}
 
 	request := mountRequest(data)
 	response := handleRequest(request)
-	fmt.Println("DEBUG ", response.ToString())
+	fmt.Println("[DEBUG] ", response.ToString())
 
 	_, err = conn.Write([]byte(response.ToString()))
 	if err != nil {
-		log.Fatalln("Error while handling the request:", err)
+		log.Println("[ERROR] Failed while handling the request:", err)
+		return
 	}
 }
 
@@ -132,11 +134,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	connection, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+	for {
+		connection, err := l.Accept()
 
-	handleConnection(connection)
+		fmt.Println("[DEBUG] Connection accepted: ", connection.RemoteAddr().String())
+		if err != nil {
+			fmt.Println("[ERROR] Failed accepting connection: ", err.Error())
+			continue
+		}
+
+		go handleConnection(connection)
+	}
 }
